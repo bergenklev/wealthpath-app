@@ -8,24 +8,32 @@ import {
   formatCurrency,
   formatPercent,
 } from "@/lib/finance";
+import {
+  CATEGORY_DEFAULT_YEARS,
+  PRODUCT_CATEGORIES,
+  Product,
+  ProductCategory,
+  convertFromUSD,
+  getProductsByCategory,
+} from "@/lib/products";
 
-const PRESETS = [
-  { label: "Luxury watch", amount: 45_000, years: 2 },
-  { label: "Trip abroad", amount: 30_000, years: 1 },
-  { label: "Used car", amount: 180_000, years: 3 },
-  { label: "House down payment", amount: 700_000, years: 5 },
-  { label: "Emergency fund (3 months expenses)", amount: 90_000, years: 1 },
-  { label: "Custom goal", amount: 20_000, years: 2 },
+type TabId = ProductCategory | "custom";
+
+const TABS: { id: TabId; label: string }[] = [
+  ...PRODUCT_CATEGORIES.map((c) => ({ id: c.id as TabId, label: c.label })),
+  { id: "custom", label: "Custom" },
 ];
 
 export default function GoalsPage() {
   const { profile, inflationEnabled, inflationRate } = useSettings();
-  const [presetIdx, setPresetIdx] = useState(0);
-  const [goalName, setGoalName] = useState(PRESETS[0].label);
-  const [targetAmountToday, setTargetAmountToday] = useState(
-    PRESETS[0].amount
+  const [activeTab, setActiveTab] = useState<TabId>("watches");
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(
+    null
   );
-  const [years, setYears] = useState(PRESETS[0].years);
+
+  const [goalName, setGoalName] = useState("My savings goal");
+  const [targetAmountToday, setTargetAmountToday] = useState(20_000);
+  const [years, setYears] = useState(2);
   const [currentSavings, setCurrentSavings] = useState(0);
   const [annualReturnPct, setAnnualReturnPct] = useState(4);
   const [localInflationEnabled, setLocalInflationEnabled] =
@@ -34,12 +42,17 @@ export default function GoalsPage() {
     inflationRate * 100
   );
 
-  const applyPreset = (idx: number) => {
-    setPresetIdx(idx);
-    setGoalName(PRESETS[idx].label);
-    setTargetAmountToday(PRESETS[idx].amount);
-    setYears(PRESETS[idx].years);
+  const fmt = (v: number) => formatCurrency(v, profile.currency);
+
+  const applyProduct = (product: Product) => {
+    setSelectedProductId(product.id);
+    setGoalName(`${product.brand} ${product.model}`);
+    setTargetAmountToday(convertFromUSD(product.priceUSD, profile.currency));
+    setYears(CATEGORY_DEFAULT_YEARS[product.category]);
   };
+
+  const productsInTab =
+    activeTab === "custom" ? [] : getProductsByCategory(activeTab);
 
   const result = useMemo(
     () =>
@@ -81,8 +94,6 @@ export default function GoalsPage() {
     ]
   );
 
-  const fmt = (v: number) => formatCurrency(v, profile.currency);
-
   return (
     <div className="space-y-6">
       <div>
@@ -90,26 +101,65 @@ export default function GoalsPage() {
           Save for something specific
         </h1>
         <p className="text-brand-500 text-sm mt-1">
-          Pick a product or experience and see exactly how much to set aside
-          each month to afford it.
+          Browse real brands and models, or type your own — then see exactly
+          how much to set aside each month to afford it.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {PRESETS.map((p, i) => (
-          <button
-            key={p.label}
-            onClick={() => applyPreset(i)}
-            className={`px-3 py-1.5 rounded-full text-sm border ${
-              presetIdx === i
-                ? "bg-brand-600 text-white border-brand-600"
-                : "border-brand-200 text-brand-700 bg-white"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      <Card title="Browse products" subtitle="Prices are approximate and illustrative">
+        <div className="flex flex-wrap gap-2 mb-4">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3 py-1.5 rounded-full text-sm border ${
+                activeTab === tab.id
+                  ? "bg-brand-600 text-white border-brand-600"
+                  : "border-brand-200 text-brand-700 bg-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "custom" ? (
+          <p className="text-sm text-brand-500">
+            Type your own goal name and price in the form below.
+          </p>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+            {productsInTab.map((product) => {
+              const price = convertFromUSD(product.priceUSD, profile.currency);
+              const selected = product.id === selectedProductId;
+              return (
+                <button
+                  key={product.id}
+                  onClick={() => applyProduct(product)}
+                  className={`shrink-0 w-44 text-left rounded-xl border p-3 transition-colors ${
+                    selected
+                      ? "border-brand-600 bg-brand-50 ring-1 ring-brand-400"
+                      : "border-brand-100 bg-white hover:border-brand-300"
+                  }`}
+                >
+                  <p className="text-xs uppercase tracking-wide text-brand-500">
+                    {product.brand}
+                  </p>
+                  <p className="text-sm font-medium text-brand-900 mt-0.5 leading-snug">
+                    {product.model}
+                  </p>
+                  <p className="text-base font-semibold text-brand-700 mt-2">
+                    {fmt(price)}
+                  </p>
+                  {product.note && (
+                    <p className="text-xs text-brand-500 mt-1">{product.note}</p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <Card title="Your goal" className="lg:col-span-1">
